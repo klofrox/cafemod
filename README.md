@@ -9,12 +9,16 @@ Oyunun kendisi değiştirilmez. Steam'deki Transformice'in yerine küçük bir *
 ## Kullanım (CafeMice.exe)
 
 1. Transformice Steam'den kurulu olmalı (ücretsiz).
-2. `CafeMice.exe`'yi çalıştır. Yükleyiciyi Steam klasörüne kurar (orijinali `Transformice.swf.orig` olarak saklar), proxy'yi başlatır ve oyunu Steam'den kendisi açar.
-3. Oynarken CafeMice penceresi açık kalmalı.
+2. `CafeMice.exe`'yi aç. Pencerede modun ve CafeMice'in durumu yazar.
+3. **Modu kur ve oyna**: yükleyiciyi Steam klasörüne kurar (orijinali `Transformice.swf.orig` olarak saklar), CafeMice'i başlatır ve oyunu Steam'den açar.
+4. Oynarken CafeMice penceresi açık kalmalı (simge durumuna küçültülebilir).
+5. **Modu kaldır**: Steam'in kendi dosyasını geri koyar, oyun Steam'den normal açılır.
+
+Komut satırından da çalışır:
 
 | Komut | Ne yapar |
 |---|---|
-| `CafeMice.exe --kaldir` | Steam'in kendi dosyasını geri koyar, oyun normal açılır |
+| `CafeMice.exe --kaldir` | Steam'in kendi dosyasını geri koyar |
 | `CafeMice.exe --oyunu-acma` | Oyunu açmaz, sadece proxy'yi çalıştırır |
 | `CafeMice.exe --oyun-klasoru "D:\...\Transformice"` | Oyun bulunamazsa klasörü elle verir |
 
@@ -54,7 +58,8 @@ Yükleyici, oyunun sınıflarını çalışma anında arayıp bulur. Oyun günce
 - `cafe_block.py`: paket ayrıştırma; engel listesi, favoriler, takip listesi, notlar.
 - `cafe_archive.py`: görülen her gönderinin SQLite arşivi ve arama (Türkçe harflere duyarlı).
 - `cafe_gif.py`: GIF'i karelere bölüp yükleyiciye gönderir.
-- `launcher.py`: exe'nin başlangıcı. Steam klasörünü bulur, yükleyiciyi kurar/kaldırır, proxy'yi başlatır, oyunu `steam://rungameid/335240` ile açar.
+- `gui.py`: exe penceresi (Modu kur ve oyna / Modu kaldır / durum).
+- `launcher.py`: exe.nin başlangıcı. Steam klasörünü bulur, yükleyiciyi kurar/kaldırır, proxy'yi başlatır, oyunu `steam://rungameid/335240` ile açar.
 
 Yükleyici ile proxy arasındaki komutlar satır satır gider: `BLOCK`, `UNBLOCK`, `FAV`, `PP`, `WATCH`, `SHOT`, `NOTE`, `SEARCH`, `PREVIEW`, `GOTO`, `LIST`. Proxy `STATE`, `TOAST`, `NOTIFY`, `MENTION`, `LINK`, `RESULTS`, `PREVIEW`, `GIF` satırlarıyla cevap verir. Ayrıntılar `cafe_proxy.py`'nin başında.
 

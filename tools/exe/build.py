@@ -19,11 +19,11 @@ def main():
     if not LOADER.is_file():
         raise SystemExit(f"{LOADER} is missing: run tools/cafe_sil_loader/build.py first")
     subprocess.run([
-        sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--console", "--name", "CafeMice",
+        sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--name", "CafeMice",
         "--paths", str(ROOT), "--add-data", f"{LOADER};.",
-        "--icon", str(HERE / "cafemice.ico"), "--version-file", str(HERE / "version.txt"),
-        "--collect-submodules", "caseus", "--hidden-import", "cafemice.cafe_proxy",
-        "--exclude-module", "tkinter", "--exclude-module", "pytest", "--exclude-module", "numpy",
+        "--icon", str(HERE / "cafemice.ico"), "--add-data", f"{HERE / 'cafemice.ico'};.", "--version-file", str(HERE / "version.txt"),
+        "--collect-submodules", "caseus", "--hidden-import", "cafemice.cafe_proxy", "--hidden-import", "cafemice.gui",
+        "--exclude-module", "pytest", "--exclude-module", "numpy",
         "--exclude-module", "pydantic", "--exclude-module", "pydantic_core",
         "--distpath", str(ROOT / "dist"), "--workpath", str(ROOT / "build" / "pyinstaller"),
         "--specpath", str(ROOT / "build" / "pyinstaller"),
