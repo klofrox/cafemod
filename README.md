@@ -58,7 +58,7 @@ Yükleyici, oyunun sınıflarını çalışma anında arayıp bulur. Oyun günce
 - `cafe_block.py`: paket ayrıştırma; engel listesi, favoriler, takip listesi, notlar.
 - `cafe_archive.py`: görülen her gönderinin SQLite arşivi ve arama (Türkçe harflere duyarlı).
 - `cafe_gif.py`: GIF'i karelere bölüp yükleyiciye gönderir.
-- `gui.py`: exe penceresi (Modu kur ve oyna / Modu kaldır / durum). Ahşap ve parşömen görünümü kodla çizilir; başlıktaki fare, oyuncunun kendi Steam klasöründeki oyun simgesidir (`icones/128.png`), repoya ya da exe ye girmez.
+- `gui.py`: exe penceresi (Modu kur ve oyna / Modu kaldır / durum), koyu ve sade, Outfit yazı tipiyle.
 - `launcher.py`: exe.nin başlangıcı. Steam klasörünü bulur, yükleyiciyi kurar/kaldırır, proxy'yi başlatır, oyunu `steam://rungameid/335240` ile açar.
 
 Yükleyici ile proxy arasındaki komutlar satır satır gider: `BLOCK`, `UNBLOCK`, `FAV`, `PP`, `WATCH`, `SHOT`, `NOTE`, `SEARCH`, `PREVIEW`, `GOTO`, `LIST`. Proxy `STATE`, `TOAST`, `NOTIFY`, `MENTION`, `LINK`, `RESULTS`, `PREVIEW`, `GIF` satırlarıyla cevap verir. Ayrıntılar `cafe_proxy.py`'nin başında.
@@ -86,4 +86,5 @@ Testler: `python -m pytest tests`
 
 - `caseus/`: friedkeenan, `caseus/LICENSE`.
 - `tools/loader/TFMProxyLoader-1.6.32.swf`: friedkeenan/tfm-proxy-loader, MIT.
+- `cafemice/fonts/`: Outfit, SIL Open Font License 1.1 (`cafemice/fonts/OFL.txt`).
 - Transformice ve tüm oyun içeriği Atelier 801'e aittir; bu repo oyun dosyası içermez.

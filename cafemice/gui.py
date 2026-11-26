@@ -5,7 +5,6 @@ Closing the window stops CafeMice (the game then needs the mod removed or
 CafeMice started again).
 """
 
-import queue
 import sys
 import threading
 from pathlib import Path
@@ -69,169 +68,43 @@ class Patcher:
 
 # --- the window ------------------------------------------------------------------
 #
-# Drawn here, in the game's spirit (wood frame, parchment, wooden buttons); no
-# picture of the game is bundled. The mouse in the header is the game's own
-# icon, read from this player's Steam folder (icones/128.png) when it is there.
+# Plain and dark (#0f0f0f), in Outfit (bundled from fonts/, SIL Open Font License).
 
-W, H = 420, 560
-WOOD = (110, 70, 38)
-WOOD_DARK = (74, 45, 22)
-WOOD_LIGHT = (140, 92, 52)
-PARCHMENT = (246, 228, 186)
-PARCHMENT_EDGE = (150, 104, 56)
-INK = (70, 44, 20)
-INK_DIM = (128, 98, 66)
-GREEN = (98, 170, 58)
-GREEN_DARK = (52, 104, 28)
-GOOD = "#3f8f2a"
-BAD = "#b8372d"
-DIM = "#80684a"
-TEXT_INK = "#46301a"
-TITLE = (255, 214, 92)
+BG = "#0f0f0f"
+CARD = "#171717"
+LINE = "#262626"
+TEXT = "#f2f2f2"
+MUTED = "#8c8c8c"
+ACCENT = "#f5b828"
+ACCENT_HOVER = "#ffc94a"
+GOOD = "#4ade80"
+BAD = "#f87171"
 
 
-def _font(size, bold=True):
-    from PIL import ImageFont
-    names = ("seguibl.ttf", "segoeuib.ttf", "arialbd.ttf") if bold else ("segoeui.ttf", "arial.ttf")
-    for name in names:
-        try:
-            return ImageFont.truetype(name, size)
-        except OSError:
-            continue
-    return ImageFont.load_default()
+def _fonts_dir():
+    return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "fonts"
 
 
-def _wood(size, seed=7):
-    """Vertical wooden planks with grain, as a PIL image."""
-    import random
-    from PIL import Image, ImageDraw
-    w, h = size
-    img = Image.new("RGB", size, WOOD)
-    d = ImageDraw.Draw(img)
-    rng = random.Random(seed)
-    x = 0
-    while x < w:
-        plank = rng.randint(54, 78)
-        shade = rng.randint(-12, 12)
-        base = tuple(max(0, min(255, c + shade)) for c in WOOD)
-        d.rectangle((x, 0, x + plank, h), fill=base)
-        for _ in range(9):  # grain
-            gx = x + rng.randint(4, plank - 4)
-            tone = tuple(max(0, c - rng.randint(10, 22)) for c in base)
-            d.line([(gx + rng.randint(-2, 2), y) for y in range(0, h + 40, 40)], fill=tone, width=1)
-        d.line((x, 0, x, h), fill=WOOD_DARK, width=2)  # gap between planks
-        d.line((x + 2, 0, x + 2, h), fill=WOOD_LIGHT, width=1)
-        x += plank
-    return img
-
-
-def _outlined(draw, xy, text, font, fill, outline, width=3, anchor="mm"):
-    x, y = xy
-    for dx in range(-width, width + 1):
-        for dy in range(-width, width + 1):
-            if dx * dx + dy * dy <= width * width:
-                draw.text((x + dx, y + dy), text, font=font, fill=outline, anchor=anchor)
-    draw.text((x, y), text, font=font, fill=fill, anchor=anchor)
-
-
-def _background(mouse=None):
-    from PIL import Image, ImageDraw
-    img = _wood((W, H))
-    d = ImageDraw.Draw(img)
-    # Frame: a darker border with a light inner edge, like a wooden board.
-    d.rectangle((0, 0, W - 1, H - 1), outline=WOOD_DARK, width=8)
-    d.rectangle((8, 8, W - 9, H - 9), outline=WOOD_LIGHT, width=2)
-    header_y = 70
-    if mouse is not None:
-        m = mouse.convert("RGBA").resize((96, 96))
-        img.paste(m, (24, header_y - 48), m)
-        title_x = 260
-    else:
-        title_x = W // 2
-    _outlined(d, (title_x, header_y - 10), "CafeMice", _font(40), TITLE, WOOD_DARK, width=3)
-    _outlined(d, (title_x, header_y + 26), "Transformice Café modu", _font(14, bold=False), (250, 238, 210),
-              WOOD_DARK, width=2)
-    # Parchment panel for the state.
-    d.rounded_rectangle((26, 138, W - 26, 250), radius=16, fill=PARCHMENT, outline=PARCHMENT_EDGE, width=4)
-    d.rounded_rectangle((34, 146, W - 34, 242), radius=12, outline=(232, 208, 160), width=2)
-    # Parchment for the message and the log.
-    d.rounded_rectangle((26, 404, W - 26, H - 24), radius=14, fill=PARCHMENT, outline=PARCHMENT_EDGE, width=3)
-    return img
-
-
-def _button(text, kind, state, arrow=False):
-    """A wooden (or green) button image: state is normal, hover, pressed or disabled."""
-    from PIL import Image, ImageDraw
-    w, h = W - 52, 58
-    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
-    d = ImageDraw.Draw(img)
-    if kind == "green":
-        face, dark = GREEN, GREEN_DARK
-    else:
-        face, dark = (172, 116, 64), (96, 58, 26)
-    if state == "hover":
-        face = tuple(min(255, c + 22) for c in face)
-    if state == "disabled":
-        face, dark = (150, 130, 110), (100, 86, 72)
-    drop = 2 if state == "pressed" else 6
-    top = 4 if state == "pressed" else 0
-    d.rounded_rectangle((0, drop, w - 1, h - 1), radius=16, fill=dark)  # the edge below
-    d.rounded_rectangle((0, top, w - 1, h - 1 - drop + top), radius=16, fill=face, outline=dark, width=3)
-    d.rounded_rectangle((8, top + 6, w - 9, top + (h - drop) // 2), radius=10,
-                        fill=tuple(min(255, c + 30) for c in face))  # shine
-    color = (255, 255, 255) if state != "disabled" else (220, 210, 200)
-    cy = top + (h - drop) // 2 + 1
-    cx = w // 2
-    if arrow:  # a play triangle, drawn (fonts may lack the symbol)
-        font = _font(19)
-        half = (d.textlength(text, font=font) + 30) / 2
-        ax = cx - half
-        tri = [(ax, cy - 9), (ax + 16, cy), (ax, cy + 9)]
-        d.polygon([(x + 2, y + 2) for x, y in tri], fill=dark)
-        d.polygon(tri, fill=color, outline=dark)
-        cx += 15
-    _outlined(d, (cx, cy), text, _font(19), color, dark, width=2)
-    return img
-
-
-class _Lines:
-    """stdout replacement: CafeMice's log lines go to the window."""
-
-    def __init__(self, q):
-        self.q = q
-
-    def write(self, text):
-        if text.strip():
-            self.q.put(text.rstrip())
-
-    def flush(self):
-        pass
-
-
-def _game_icon(folder):
-    """The game's own icon from this player's Steam folder, or None."""
-    if folder is None:
-        return None
-    from PIL import Image
+def _load_fonts():
+    """Make the bundled Outfit files usable by Tk, for this process only."""
     try:
-        return Image.open(Path(folder) / "icones" / "128.png")
-    except OSError:
-        return None
+        import ctypes
+        for f in _fonts_dir().glob("*.ttf"):
+            ctypes.windll.gdi32.AddFontResourceExW(str(f), 0x10, 0)  # FR_PRIVATE
+    except (OSError, AttributeError):
+        pass  # not Windows: Tk falls back to its own font
 
 
 class CafeMiceWindow:
     def __init__(self, patcher):
         import tkinter as tk
-        from PIL import ImageTk
 
+        _load_fonts()
         self.tk = tk
         self.p = patcher
-        self.lines = queue.Queue()
-        self.log_lines = []
-        sys.stdout = sys.stderr = _Lines(self.lines)
-
         root = self.root = tk.Tk()
         root.title("CafeMice")
+        root.configure(bg=BG)
         root.resizable(False, False)
         icon = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "cafemice.ico"
         if icon.is_file():
@@ -240,90 +113,76 @@ class CafeMiceWindow:
             except tk.TclError:
                 pass
 
-        c = self.canvas = tk.Canvas(root, width=W, height=H, highlightthickness=0, bd=0)
-        c.pack()
-        self._bg = ImageTk.PhotoImage(_background(_game_icon(patcher.folder)))
-        c.create_image(0, 0, image=self._bg, anchor="nw")
+        body = tk.Frame(root, bg=BG, padx=28, pady=26)
+        body.pack()
+        tk.Label(body, text="CafeMice", bg=BG, fg=TEXT, font=("Outfit", 26, "bold")).pack(anchor="w")
+        tk.Label(body, text="Transformice Café modu", bg=BG, fg=MUTED,
+                 font=("Outfit Medium", 11)).pack(anchor="w", pady=(0, 18))
 
-        self.mod_dot = c.create_oval(52, 170, 66, 184, outline="")
-        self.mod_text = c.create_text(76, 177, anchor="w", font=("Segoe UI", 13, "bold"))
-        self.run_dot = c.create_oval(52, 206, 66, 220, outline="")
-        self.run_text = c.create_text(76, 213, anchor="w", font=("Segoe UI", 12, "bold"))
+        card = tk.Frame(body, bg=CARD, highlightbackground=LINE, highlightthickness=1, padx=16, pady=12)
+        card.pack(fill="x")
+        self.mod_label = tk.Label(card, bg=CARD, font=("Outfit Medium", 12), anchor="w")
+        self.mod_label.pack(fill="x")
+        self.run_label = tk.Label(card, bg=CARD, font=("Outfit Medium", 12), anchor="w")
+        self.run_label.pack(fill="x", pady=(4, 0))
 
-        self.buttons = {}
-        self._make_button("play", "Modu kur ve oyna", "green", 270, self.on_play)
-        self._make_button("remove", "Modu kaldır", "wood", 336, self.on_remove)
+        self.play_btn = self._button(body, "Modu kur ve oyna", ACCENT, ACCENT_HOVER, "#111111", self.on_play)
+        self.play_btn.pack(fill="x", pady=(18, 0))
+        self.remove_btn = self._button(body, "Modu kaldır", CARD, "#202020", TEXT, self.on_remove, border=True)
+        self.remove_btn.pack(fill="x", pady=(10, 0))
 
-        self.message = c.create_text(W // 2, 432, width=W - 80, font=("Segoe UI", 10, "bold"), fill=TEXT_INK,
-                                     justify="center")
-        self.log = c.create_text(44, 462, anchor="nw", width=W - 88, font=("Consolas", 8), fill=DIM)
+        self.message = tk.Label(body, bg=BG, fg=MUTED, font=("Outfit Medium", 10), wraplength=300,
+                                justify="left", anchor="w")
+        self.message.pack(fill="x", pady=(14, 0))
 
         root.protocol("WM_DELETE_WINDOW", self.on_close)
         self.refresh()
-        root.after(300, self.tick)
+        root.after(500, self.tick)
 
-    def _make_button(self, name, text, kind, y, command):
-        from PIL import ImageTk
-        images = {state: ImageTk.PhotoImage(_button(text, kind, state, arrow=name == "play"))
-                  for state in ("normal", "hover", "pressed", "disabled")}
-        item = self.canvas.create_image(26, y, image=images["normal"], anchor="nw")
-        b = self.buttons[name] = {"item": item, "images": images, "enabled": True, "command": command}
-        c = self.canvas
+    def _button(self, parent, text, bg, hover, fg, command, border=False):
+        tk = self.tk
+        b = tk.Label(parent, text=text, bg=bg, fg=fg, font=("Outfit SemiBold", 13), pady=11, width=24,
+                     cursor="hand2", highlightthickness=1 if border else 0, highlightbackground=LINE)
+        b.enabled = True
+        b.colors = (bg, hover, fg)
+        b.bind("<Enter>", lambda e: b.enabled and b.configure(bg=hover))
+        b.bind("<Leave>", lambda e: b.enabled and b.configure(bg=bg))
+        b.bind("<ButtonRelease-1>", lambda e: b.enabled and command())
+        return b
 
-        def show(state):
-            c.itemconfigure(item, image=images[state if b["enabled"] else "disabled"])
+    def _enable(self, b, on):
+        b.enabled = on
+        bg, _, fg = b.colors
+        b.configure(bg=bg if on else CARD, fg=fg if on else "#4a4a4a", cursor="hand2" if on else "")
 
-        c.tag_bind(item, "<Enter>", lambda e: (show("hover"), c.configure(cursor="hand2" if b["enabled"] else "")))
-        c.tag_bind(item, "<Leave>", lambda e: (show("normal"), c.configure(cursor="")))
-        c.tag_bind(item, "<ButtonPress-1>", lambda e: show("pressed"))
-
-        def release(e):
-            show("hover")
-            if b["enabled"]:
-                command()
-
-        c.tag_bind(item, "<ButtonRelease-1>", release)
-
-    def _enable(self, name, on):
-        b = self.buttons[name]
-        if b["enabled"] != on:
-            b["enabled"] = on
-            self.canvas.itemconfigure(b["item"], image=b["images"]["normal" if on else "disabled"])
-
-    def say(self, text, color=TEXT_INK):
-        self.canvas.itemconfigure(self.message, text=text, fill=color)
+    def say(self, text, color=MUTED):
+        self.message.configure(text=text, fg=color)
 
     def refresh(self):
-        c = self.canvas
         status = self.p.status()
         if status == "no_game":
-            c.itemconfigure(self.mod_dot, fill=BAD)
-            c.itemconfigure(self.mod_text, text="Transformice bulunamadı (Steam'den kur)", fill=BAD)
+            self.mod_label.configure(text="●  Transformice bulunamadı", fg=BAD)
         elif status == "installed":
-            c.itemconfigure(self.mod_dot, fill=GOOD)
-            c.itemconfigure(self.mod_text, text="Mod: kurulu", fill=GOOD)
+            self.mod_label.configure(text="●  Mod kurulu", fg=GOOD)
         else:
-            c.itemconfigure(self.mod_dot, fill=DIM)
-            c.itemconfigure(self.mod_text, text="Mod: kurulu değil", fill=DIM)
+            self.mod_label.configure(text="●  Mod kurulu değil", fg=MUTED)
         if self.p.running:
-            c.itemconfigure(self.run_dot, fill=GOOD)
-            c.itemconfigure(self.run_text, text="CafeMice: çalışıyor (pencereyi kapatma)", fill=GOOD)
+            self.run_label.configure(text="●  CafeMice çalışıyor", fg=GOOD)
         else:
-            c.itemconfigure(self.run_dot, fill=DIM)
-            c.itemconfigure(self.run_text, text="CafeMice: kapalı", fill=DIM)
-        self._enable("play", status != "no_game")
-        self._enable("remove", status == "installed")
+            self.run_label.configure(text="●  CafeMice kapalı", fg=MUTED)
+        self._enable(self.play_btn, status != "no_game")
+        self._enable(self.remove_btn, status == "installed")
 
     def on_play(self):
         if self.p.play() == "no_game":
             self.say("Önce Transformice'i Steam'den kur.", BAD)
         else:
-            self.say("Oyun açılıyor... Oynarken bu pencere açık kalsın, alta küçültebilirsin.")
+            self.say("Oyun açılıyor. Oynarken bu pencere açık kalsın, alta küçültebilirsin.")
         self.refresh()
 
     def on_remove(self):
         if self.p.remove() == "removed":
-            self.say("Mod kaldırıldı. Oyun artık Steam'den normal açılır.")
+            self.say("Mod kaldırıldı. Oyun Steam'den normal açılır.")
         self.refresh()
 
     def on_close(self):
@@ -336,14 +195,6 @@ class CafeMiceWindow:
         self.root.destroy()
 
     def tick(self):
-        changed = False
-        while not self.lines.empty():
-            line = self.lines.get_nowait()
-            self.log_lines.append(line[:70])
-            changed = True
-        if changed:
-            self.log_lines = self.log_lines[-5:]
-            self.canvas.itemconfigure(self.log, text="\n".join(self.log_lines))
         if self.p.error == "busy":
             self.say("CafeMice zaten açık: diğer pencereyi kapat, sonra tekrar bas.", BAD)
             self.p.error = "shown"
@@ -358,6 +209,9 @@ class CafeMiceWindow:
 
 
 def main():
+    if sys.stdout is None:  # a window app: CafeMice's log lines go nowhere
+        import os
+        sys.stdout = sys.stderr = open(os.devnull, "w", encoding="utf-8")
     folder = cafe_exe.find_transformice()
     patcher = Patcher(folder=folder, loader=cafe_exe.bundled_loader(), data=cafe_exe.data_dir())
     CafeMiceWindow(patcher).run()

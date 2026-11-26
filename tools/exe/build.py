@@ -21,7 +21,7 @@ def main():
     subprocess.run([
         sys.executable, "-m", "PyInstaller", "--noconfirm", "--onefile", "--windowed", "--name", "CafeMice",
         "--paths", str(ROOT), "--add-data", f"{LOADER};.",
-        "--icon", str(HERE / "cafemice.ico"), "--add-data", f"{HERE / 'cafemice.ico'};.", "--version-file", str(HERE / "version.txt"),
+        "--icon", str(HERE / "cafemice.ico"), "--add-data", f"{HERE / 'cafemice.ico'};.", "--add-data", f"{ROOT / 'cafemice' / 'fonts'};fonts", "--version-file", str(HERE / "version.txt"),
         "--collect-submodules", "caseus", "--hidden-import", "cafemice.cafe_proxy", "--hidden-import", "cafemice.gui",
         "--exclude-module", "pytest", "--exclude-module", "numpy",
         "--exclude-module", "pydantic", "--exclude-module", "pydantic_core",
