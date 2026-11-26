@@ -174,7 +174,7 @@
          var note:String = this.cx_note(author);
          if(nl >= 0 && cx_is_dev(author))
          {
-            white = white.substring(0,nl) + "  <font size='10' color='#FF4B4B'>(Geliştirici)</font>" + white.substring(nl);
+            white = white.substring(0,nl) + "  <font size='10' color='#FF4B4B'>(Developer)</font>" + white.substring(nl);
             nl = white.indexOf("\n");
          }
          if(note != "" && nl >= 0)
