@@ -68,6 +68,10 @@
             {
                this.cx_try_goto();
             }
+            if(this.cx_goto_check != null)
+            {
+               this.cx_check_goto();
+            }
          }
          catch(err:Error)
          {
@@ -123,6 +127,20 @@
          return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       }
 
+      // The mod's author: written next to the name in every CafeMice.
+      private static const CX_DEV:String = "Klofrox#0571";
+
+      private static function cx_is_dev(name:String) : Boolean
+      {
+         if(name == null || name == "")
+         {
+            return false;
+         }
+         var n:String = name.toLowerCase();
+         var dev:String = CX_DEV.toLowerCase();
+         return n == dev || (n.indexOf("#") < 0 && n == dev.substring(0,dev.indexOf("#")));
+      }
+
       public function cx_note(name:String) : String
       {
          var notes:Object = this.cp_state.notes;
@@ -154,6 +172,11 @@
          var a:Object = CX_AUTHOR.exec(nl >= 0 ? orig.substring(0,orig.indexOf("\n")).replace(CX_TAGS,"") : plain);
          var author:String = a != null ? String(a[0]) : "";
          var note:String = this.cx_note(author);
+         if(nl >= 0 && cx_is_dev(author))
+         {
+            white = white.substring(0,nl) + "  <font size='10' color='#FF4B4B'>(Geliştirici)</font>" + white.substring(nl);
+            nl = white.indexOf("\n");
+         }
          if(note != "" && nl >= 0)
          {
             white = white.substring(0,nl) + "  <font size='10' color='#F2C85B'>" + cx_escape(note) + "</font>" + white.substring(nl);
@@ -649,6 +672,9 @@
 
       private var cx_goto_post:int = 0;
 
+      // After a "Mesaja git" scroll: {card, want} to see that the list really moved.
+      private var cx_goto_check:Object = null;
+
       private var cx_goto_at:int = 0;
 
       private function cx_avatar(id:int, size:Number) : Sprite
@@ -860,8 +886,10 @@
                   t = p.length() == 2 ? String(p[1].attribute("type")) : "";
                   if(String(m.attribute("declaredBy")) == String(x.attribute("name")) && p.length() == 2 && String(p[0].attribute("type")) == "Boolean" && (t == "int" || t == "Number") && String(m.attribute("returnType")) == "void")
                   {
-                     this.cs_log("goto: scrolling with " + String(m.attribute("name")) + " at depth " + depth);
+                     this.cs_log("goto: scrolling with " + String(m.attribute("name")) + " at depth " + depth
+                        + ", card y " + int(card.y) + ", list y " + int(card.parent.y));
                      d[String(m.attribute("name"))](false,-card.y);
+                     this.cx_goto_check = {"card":card,"want":-card.y};
                      this.cx_flash(card);
                      return;
                   }
@@ -876,6 +904,26 @@
          }
          this.cs_log("goto: no scroll method found");
          this.cx_flash(card);
+      }
+
+      // The list's own scroll leaves it where it was when the post is above
+      // (it only scrolls down): then the list is moved to the post here.
+      private function cx_check_goto() : void
+      {
+         var card:DisplayObject = this.cx_goto_check.card;
+         var want:Number = this.cx_goto_check.want;
+         this.cx_goto_check = null;
+         if(card.parent == null || card.stage == null)
+         {
+            return;
+         }
+         var list:DisplayObject = card.parent;
+         this.cs_log("goto: list y " + int(list.y) + " after the scroll, wanted " + int(want));
+         if(Math.abs(list.y - want) > 2)
+         {
+            list.y = want;
+            this.cs_log("goto: moved the list to the post itself");
+         }
       }
 
       // A short blue glow over the post we went to.

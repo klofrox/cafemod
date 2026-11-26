@@ -327,10 +327,10 @@
             }],["PP indir",function():void
             {
                self.cs_send("PP " + author);
-            }],[this.cx_watched(author) ? "Bildirim kapat" : "Bildirim aç",function():void
+            }],["Bildirim",function():void
             {
                self.cs_send("WATCH " + author);
-            }],[self.cx_note(author) != "" ? "Notu düzenle" : "Not ekle",function():void
+            }],["Not",function():void
             {
                self.cx_open_note(author);
             }],["Sil",function():void

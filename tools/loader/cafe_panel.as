@@ -421,7 +421,7 @@
          }
          else if(items.length == 0)
          {
-            t = cp_label(this.cp_kind == "favs" ? "Henüz favori yok. Bir mesajın menüsünden \"Favori\" seç." : (watched ? "Kimse yok. Bir mesajın menüsünden \"Bildirim aç\" seç; o oyuncu Café'ye yazınca ses gelir." : "Engellenen oyuncu yok. Bir mesajın menüsünden \"Sil\" seç."),12,CP_DIM,w - 20);
+            t = cp_label(this.cp_kind == "favs" ? "Henüz favori yok. Bir mesajın menüsünden \"Favori\" seç." : (watched ? "Kimse yok. Bir mesajın menüsünden \"Bildirim\" seç; o oyuncu Café'ye yazınca ses gelir." : "Engellenen oyuncu yok. Bir mesajın menüsünden \"Sil\" seç."),12,CP_DIM,w - 20);
             t.x = 6;
             t.y = 6;
             list.addChild(t);

@@ -50,6 +50,13 @@ class Archive:
             CREATE INDEX IF NOT EXISTS posts_author ON posts(author_fold);
             CREATE TABLE IF NOT EXISTS topics (topic_id INTEGER PRIMARY KEY, title TEXT);
         """)
+        # The post's time and exact bytes: the server stops sending a long
+        # topic's first posts, the proxy shows them from here (older_than).
+        cols = {row[1] for row in self.db.execute("PRAGMA table_info(posts)")}
+        for name, decl in (("time", "INTEGER"), ("raw", "BLOB")):
+            if name not in cols:
+                self.db.execute(f"ALTER TABLE posts ADD COLUMN {name} {decl}")
+        self.db.commit()
 
     def has_topic(self, topic_id):
         return self.db.execute("SELECT 1 FROM posts WHERE topic_id = ? LIMIT 1", (topic_id,)).fetchone() is not None
@@ -62,10 +69,20 @@ class Archive:
         now = int(self.clock())
         with self.db:
             self.db.executemany(
-                "INSERT OR REPLACE INTO posts VALUES (?, ?, ?, ?, ?, ?, ?, COALESCE((SELECT seen_at FROM posts WHERE post_id = ?), ?))",
+                "INSERT OR REPLACE INTO posts (post_id, topic_id, author, author_fold, text, text_fold, avatar,"
+                " seen_at, time, raw) VALUES (?, ?, ?, ?, ?, ?, ?,"
+                " COALESCE((SELECT seen_at FROM posts WHERE post_id = ?), ?), ?, ?)",
                 [(p["post_id"], topic_id, p["author"], fold(p["author"]), p["text"], fold(p["text"]),
-                  p.get("avatar") or 0, p["post_id"], now) for p in posts])
+                  p.get("avatar") or 0, p["post_id"], now, p.get("time"), p.get("raw")) for p in posts])
         return new
+
+    def older_than(self, topic_id, post_id):
+        """The topic's archived posts before ``post_id``, oldest first."""
+        rows = self.db.execute(
+            "SELECT post_id, avatar, time, author, text, raw FROM posts WHERE topic_id = ? AND post_id < ?"
+            " ORDER BY post_id", (int(topic_id), int(post_id))).fetchall()
+        return [{"post_id": r[0], "avatar": r[1], "time": r[2], "author": r[3], "text": r[4],
+                 "raw": bytes(r[5]) if r[5] is not None else None} for r in rows]
 
     def add_topics(self, topics):
         with self.db:

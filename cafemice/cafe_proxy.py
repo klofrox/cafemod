@@ -58,8 +58,10 @@ from .cafe_block import (
     _key,
     name_matches,
     avatar_url,
+    pack_post,
     parse_posts,
     parse_topics,
+    with_older_posts,
 )
 from .cafe_gif import GifAvatars
 
@@ -236,16 +238,36 @@ class CafeProxy(Proxy):
                 _log(f"topic {topic_id} was opened by {self.blocklist.owners[topic_id]}: hiding it")
                 await self._resend_list(source)
             return self.DO_NOTHING
-        new = self.blocklist.filter_posts(packet.data)
         await self._archive(parsed)
+        base = bytes(packet.data)
+        restored = self._older_posts(parsed)
+        if restored:
+            base = with_older_posts(base, restored)
+            _log(f"topic {parsed[0]}: {len(restored)} older posts from the archive")
+        new = self.blocklist.filter_posts(base)
         await self._learn_gif_avatars()
-        data = bytes(new) if new is not None else bytes(packet.data)
-        if new is None:
+        data = bytes(new) if new is not None else base
+        if new is None and not restored:
             return None
         if new is not None:
-            _log(f"topic posts: hid {len(packet.data) - len(new)} bytes of blocked posts")
+            _log(f"topic posts: hid {len(base) - len(new)} bytes of blocked posts")
         await source.destination.write_packet(caseus.clientbound.CafeTopicPostsPacket, data=bytearray(data))
         return self.DO_NOTHING
+
+    def _older_posts(self, parsed):
+        """Archived posts of the topic the server no longer sends (it cuts long
+        topics at the start), as post bytes, oldest first."""
+        if parsed is None or not parsed[1]:
+            return []
+        topic_id, posts = parsed
+        first = min(p["post_id"] for p in posts)
+        older = self.archive.older_than(topic_id, first)
+        if not older:
+            return []
+        # An old row without its bytes gets the time of the oldest post sent.
+        fallback = min(posts, key=lambda p: p["post_id"])["time"]
+        return [p["raw"] or pack_post(p["post_id"], p["avatar"], p["time"] or fallback, p["author"], p["text"])
+                for p in older]
 
     async def _learn_gif_avatars(self):
         """A GIF player's avatar id showed up in the posts: send their GIF."""

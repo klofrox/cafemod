@@ -72,8 +72,9 @@ def _utf(data, pos):
 def parse_posts(data):
     """(topic_id, posts) of a posts payload, or None if it cannot be read.
 
-    Each post: {"start", "end", "post_id", "avatar", "author", "text", "marker"};
-    start/end are byte offsets of the post inside ``data``."""
+    Each post: {"start", "end", "post_id", "avatar", "time", "author", "text",
+    "marker", "raw"}; start/end are byte offsets of the post inside ``data``, raw
+    its bytes."""
     data = bytes(data)
     try:
         if not data or not data[0]:
@@ -85,7 +86,7 @@ def parse_posts(data):
         posts = []
         while pos < len(data):
             start = pos
-            post_id, avatar = struct.unpack_from(">ii", data, pos)
+            post_id, avatar, posted = struct.unpack_from(">iii", data, pos)
             pos += 12
             author, pos = _utf(data, pos)
             text, pos = _utf(data, pos)
@@ -95,11 +96,26 @@ def parse_posts(data):
                 return None
             marker = data[pos]
             pos += 1
-            posts.append({"start": start, "end": pos, "post_id": post_id, "avatar": avatar,
-                          "author": author, "text": text, "marker": marker})
+            posts.append({"start": start, "end": pos, "post_id": post_id, "avatar": avatar, "time": posted,
+                          "author": author, "text": text, "marker": marker, "raw": data[start:pos]})
     except struct.error:
         return None
     return topic_id, posts
+
+
+POSTS_HEADER = 1 + 4 + 1 + 1  # ok, topic id, two flags
+
+
+def pack_post(post_id, avatar, posted, author, text, marker=0):
+    """One post in the layout parse_posts reads (no likes, no extra text)."""
+    return (struct.pack(">iii", int(post_id), int(avatar or 0), int(posted or 0)) + _pack_utf(author)
+            + _pack_utf(text) + b"\x00" + struct.pack(">h", 0) + _pack_utf("") + bytes([int(marker) & 0xFF]))
+
+
+def with_older_posts(data, older):
+    """The posts payload with ``older`` (post bytes, oldest first) before its own posts."""
+    data = bytes(data)
+    return data[:POSTS_HEADER] + b"".join(older) + data[POSTS_HEADER:]
 
 
 def parse_topics(data):
