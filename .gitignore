@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+build/
+dist/
+*.sqlite3*
+cafe_*.json
+.pytest_cache/
