@@ -428,6 +428,10 @@
                   this.cp_state = getDefinitionByName("JSON").parse(line.substring(6));
                   this.cx_ver++;
                   this.cp_refresh();
+                  if(this.cp_trash_draw != null)
+                  {
+                     this.cp_trash_draw();
+                  }
                }
                catch(err:Error)
                {
@@ -471,6 +475,10 @@
                {
                   this.cs_log("bad results: " + resErr.message);
                }
+            }
+            else if(line.indexOf("AVATARS ") == 0)
+            {
+               this.av_refresh(line);
             }
             else if(line.indexOf("PREVIEW ") == 0)
             {

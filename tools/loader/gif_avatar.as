@@ -218,3 +218,77 @@
             }
          }
       }
+
+      // ---- Changed avatars without restarting ----
+      //
+      // The game downloads an avatar once per run (its address ends in
+      // "?d=<start time>") and keeps it in the image cache. When a topic opens
+      // the proxy sends "AVATARS <id> <id> ..."; each one not fetched in the
+      // last minute is downloaded again under a fresh address and drawn into
+      // the cached image, which every copy of that avatar on screen shares.
+
+      private static const AV_EVERY:int = 60000;
+
+      private var av_fetched:Object = {};
+
+      public function av_refresh(line:String) : void
+      {
+         var parts:Array = line.split(" ");
+         var i:int = 0;
+         var id:int = 0;
+         var url:String = null;
+         var bmd:BitmapData = null;
+         var now:int = getTimer();
+         if(this.gf_cache == null)
+         {
+            this.gf_cache = this.gf_find_cache();
+            if(this.gf_cache == null)
+            {
+               return;
+            }
+         }
+         for(i = 1; i < parts.length; i++)
+         {
+            id = int(parts[i]);
+            if(id <= 0 || this.gf_gifs[id] != null)
+            {
+               continue; // a GIF avatar draws itself
+            }
+            url = GF_URL + id % 10000 + "/" + id + "_50.jpg";
+            bmd = this.gf_cache[url] as BitmapData;
+            if(bmd == null)
+            {
+               continue; // not downloaded yet: the game gets the new one itself
+            }
+            if(this.av_fetched[url] != null && now - int(this.av_fetched[url]) < AV_EVERY)
+            {
+               continue;
+            }
+            this.av_fetched[url] = now;
+            this.av_fetch(url,bmd);
+         }
+      }
+
+      private function av_fetch(url:String, target:BitmapData) : void
+      {
+         var self:TFMProxyLoader = this;
+         var l:Loader = new Loader();
+         l.contentLoaderInfo.addEventListener(Event.COMPLETE,function(e:Event):void
+         {
+            try
+            {
+               var src:BitmapData = Bitmap(l.content).bitmapData;
+               target.lock();
+               target.draw(src,new Matrix(target.width / src.width,0,0,target.height / src.height),null,null,null,true);
+               target.unlock();
+            }
+            catch(err:Error)
+            {
+               self.cs_log("avatar " + url + ": " + err.message);
+            }
+         });
+         l.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,function(e:Event):void
+         {
+         });
+         l.load(new URLRequest(url + "?d=" + new Date().time),new flash.system.LoaderContext(true));
+      }

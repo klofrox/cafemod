@@ -18,6 +18,8 @@ from .paths import DATA_DIR
 
 ARCHIVE_PATH = DATA_DIR / "cafe_archive.sqlite3"
 SEARCH_LIMIT = 60
+# The Café's "show all messages" view, answered from the archive.
+ALL_MESSAGES_LIMIT = 300
 
 
 def fold(text):
@@ -84,6 +86,14 @@ class Archive:
         return [{"post_id": r[0], "avatar": r[1], "time": r[2], "author": r[3], "text": r[4],
                  "raw": bytes(r[5]) if r[5] is not None else None} for r in rows]
 
+    def posts_from(self, topic_id, post_id):
+        """The topic's archived posts from ``post_id`` on, oldest first."""
+        rows = self.db.execute(
+            "SELECT post_id, avatar, time, author, text, raw FROM posts WHERE topic_id = ? AND post_id >= ?"
+            " ORDER BY post_id", (int(topic_id), int(post_id))).fetchall()
+        return [{"post_id": r[0], "avatar": r[1], "time": r[2], "author": r[3], "text": r[4],
+                 "raw": bytes(r[5]) if r[5] is not None else None} for r in rows]
+
     def add_topics(self, topics):
         with self.db:
             self.db.executemany("INSERT OR REPLACE INTO topics VALUES (?, ?)", [(t["id"], t["title"]) for t in topics])
@@ -122,6 +132,24 @@ class Archive:
             if " ".join(r[3].split()) == want:
                 return {"post": r[0], "topic": r[1], "avatar": r[2], "title": r[4], "text": r[3]}
         return None
+
+    def by_author(self, name, limit=ALL_MESSAGES_LIMIT):
+        """The author's newest archived posts (``limit`` of them), oldest first.
+
+        A name without its #tag matches every tag."""
+        key = fold(str(name or "").strip())
+        if not key:
+            return []
+        if "#" in key:
+            where, arg = "author_fold = ?", key
+        else:
+            where = "author_fold LIKE ? ESCAPE '\\'"
+            arg = key.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "#%"
+        rows = self.db.execute(
+            "SELECT post_id, topic_id, avatar, time, author, text, raw FROM posts WHERE " + where +
+            " ORDER BY post_id DESC LIMIT ?", (arg, int(limit))).fetchall()
+        return [{"post_id": r[0], "topic_id": r[1], "avatar": r[2], "time": r[3], "author": r[4], "text": r[5],
+                 "raw": bytes(r[6]) if r[6] is not None else None} for r in reversed(rows)]
 
     def last_author(self, topic_id, skip=lambda name: False):
         """Who wrote the topic's newest archived post, leaving out ``skip``ped names."""

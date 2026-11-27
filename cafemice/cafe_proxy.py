@@ -51,17 +51,24 @@ from caseus.proxies import Proxy
 
 from .cafe_archive import Archive, mentions
 from .cafe_block import (
+    ALL_MESSAGES_TOPIC_ID,
+    DELETED_MARK,
     Blocklist,
+    CafeSettings,
     Favorites,
     Notes,
     Watchlist,
     _key,
     name_matches,
+    all_messages_payload,
     avatar_url,
     pack_post,
     parse_posts,
     parse_topics,
+    retext_post,
+    with_mod_flag,
     with_older_posts,
+    with_posts_merged,
 )
 from .cafe_gif import GifAvatars
 
@@ -166,10 +173,15 @@ def _upload(path):
     return url
 
 class CafeProxy(Proxy):
+    # Turn on the Café list's moderator flag (30, 40): like/dislike moves a
+    # score by 15000 on screen instead of 1.
+    force_mod_flag = True
+
     def __init__(self, *args, blocklist=None, favorites=None, gifs=None, watchlist=None, pp_dir=PP_DIR,
                  shot_dir=SHOT_DIR, fetch=None, upload=None, probe_delay=PROBE_DELAY, archive=None,
-                 notes=None, me=None, **kwargs):
+                 notes=None, me=None, settings=None, **kwargs):
         super().__init__(*args, **kwargs)
+        self.settings = settings if settings is not None else CafeSettings()
         self.archive = archive if archive is not None else Archive()
         self.notes = notes if notes is not None else Notes()
         self.me = me  # this player's name, from the login
@@ -195,6 +207,8 @@ class CafeProxy(Proxy):
         self.register_packet_listener(self._on_list, caseus.clientbound.CafeListPacket)
         self.register_packet_listener(self._on_notification, caseus.clientbound.CafeNewPostNotificationPacket)
         self.register_packet_listener(self._on_open_topic, caseus.serverbound.CafeOpenTopicPacket)
+        self.register_packet_listener(self._on_show_all, caseus.serverbound.CafeShowAllMessagesPacket)
+        self._all_messages_name = None  # whose messages the archive view shows
         self.register_packet_listener(self._on_login, caseus.clientbound.LoginSuccessPacket)
 
     # --- game traffic ---------------------------------------------------
@@ -220,7 +234,28 @@ class CafeProxy(Proxy):
                 _log(f"{post['author']} wrote to you in topic {topic_id}")
                 await self._broadcast([f"MENTION {post['author']}\t{self.archive.title(topic_id)}"])
 
+    async def _on_show_all(self, source, packet):
+        """The moderator menu's "show all messages of <name>": answered from
+        the archive, never sent to the server."""
+        self._all_messages_name = str(getattr(packet, "name", "") or "").strip()
+        await self._send_all_messages(source)
+        return self.DO_NOTHING
+
+    async def _send_all_messages(self, client):
+        name = self._all_messages_name
+        posts = self.archive.by_author(name)
+        _log(f"all messages of {name}: {len(posts)} from the archive")
+        await client.write_packet(caseus.clientbound.CafeTopicPostsPacket,
+                                  data=bytearray(all_messages_payload(posts, title=self.archive.title)))
+        if not posts:
+            await self._say(client, f"Arşivde {name} kullanıcısının mesajı yok.")
+
     async def _on_open_topic(self, source, packet):
+        if packet.topic_id == ALL_MESSAGES_TOPIC_ID:
+            # The game reopens the archive view (its refresh): not a real topic.
+            if self._all_messages_name:
+                await self._send_all_messages(source)
+            return self.DO_NOTHING
         self._open_topic = packet.topic_id
         # The player asked for it: the answer goes to the game.
         self._probing.discard(packet.topic_id)
@@ -239,20 +274,47 @@ class CafeProxy(Proxy):
                 await self._resend_list(source)
             return self.DO_NOTHING
         await self._archive(parsed)
+        if parsed is not None:
+            # The loader fetches these avatars again: a changed picture shows
+            # without restarting the game (which keeps them for its whole run).
+            ids = sorted({p["avatar"] for p in parsed[1] if p["avatar"] > 0})
+            if ids:
+                await self._broadcast(["AVATARS " + " ".join(map(str, ids))])
         base = bytes(packet.data)
         restored = self._older_posts(parsed)
         if restored:
             base = with_older_posts(base, restored)
             _log(f"topic {parsed[0]}: {len(restored)} older posts from the archive")
+        deleted = self._deleted_posts(parsed)
+        if deleted:
+            base = with_posts_merged(base, deleted)
+            _log(f"topic {parsed[0]}: {len(deleted)} deleted posts from the archive")
         new = self.blocklist.filter_posts(base)
         await self._learn_gif_avatars()
         data = bytes(new) if new is not None else base
-        if new is None and not restored:
+        if new is None and not restored and not deleted:
             return None
         if new is not None:
             _log(f"topic posts: hid {len(base) - len(new)} bytes of blocked posts")
         await source.destination.write_packet(caseus.clientbound.CafeTopicPostsPacket, data=bytearray(data))
         return self.DO_NOTHING
+
+    def _deleted_posts(self, parsed):
+        """Archived posts of the topic the server sent before but no longer
+        does (deleted), as post bytes marked "(silindi)". Posts older than the
+        first one sent are left to _older_posts: those are cut, not deleted."""
+        if parsed is None or not parsed[1] or not self.settings.show_deleted:
+            return []
+        topic_id, posts = parsed
+        sent = {p["post_id"] for p in posts}
+        first = min(sent)
+        out = []
+        for p in self.archive.posts_from(topic_id, first):
+            if p["post_id"] in sent:
+                continue
+            raw = p["raw"] or pack_post(p["post_id"], p["avatar"], p["time"], p["author"], p["text"])
+            out.append(retext_post(raw, lambda text: DELETED_MARK + text, marker=0))
+        return out
 
     def _older_posts(self, parsed):
         """Archived posts of the topic the server no longer sends (it cuts long
@@ -287,7 +349,10 @@ class CafeProxy(Proxy):
             self._queue_probes(source, self.blocklist.unknown_topics(packet.data))
         new = self.blocklist.filter_topics(packet.data, self._last_poster)
         data = bytes(new) if new is not None else bytes(packet.data)
-        if new is None:
+        flagged = with_mod_flag(data) if self.force_mod_flag else None
+        if flagged is not None:
+            data = flagged
+        if new is None and flagged is None:
             return None
         if new is not None:
             _log("topic list: hid topics of blocked players")
@@ -347,6 +412,8 @@ class CafeProxy(Proxy):
             return
         new = self.blocklist.filter_topics(self._last_list, self._last_poster)
         if new is not None:
+            if self.force_mod_flag:
+                new = with_mod_flag(new) or new
             await server.destination.write_packet(caseus.clientbound.CafeListPacket, data=bytearray(new))
 
     async def _refresh_cafe(self):
@@ -377,7 +444,8 @@ class CafeProxy(Proxy):
         self._place_favorites()
         state = {"blocked": sorted(self.blocklist.names.values(), key=str.lower), "favs": self.favorites.items,
                  "watched": sorted(self.watchlist.names.values(), key=str.lower),
-                 "notes": self.notes.items, "me": self.me or ""}
+                 "notes": self.notes.items, "me": self.me or "",
+                 "showDeleted": self.settings.show_deleted}
         return "STATE " + json.dumps(state, ensure_ascii=False, separators=(",", ":"))
 
     def _server_connection(self):
@@ -437,6 +505,11 @@ class CafeProxy(Proxy):
         if command == "SEARCH":
             results = self.archive.search(arg)
             return ["RESULTS " + json.dumps({"query": arg, "results": results}, ensure_ascii=False, separators=(",", ":"))]
+        if command == "DELETED":
+            on = self.settings.toggle_deleted()
+            _log("showing deleted posts" if on else "hiding deleted posts")
+            await self._refresh_cafe()
+            return [self.state_line(), "TOAST Silinen mesajlar: " + ("gösteriliyor" if on else "gizli")]
         if command == "PREVIEW":
             return [await self.preview(arg.strip())]
         if command == "GOTO":
@@ -503,6 +576,9 @@ class CafeProxy(Proxy):
         path.write_bytes(data)
         _log(f"avatar of {name} saved to {path}")
         return f"TOAST PP kaydedildi: {path.name}"
+
+    async def _say(self, client, line):
+        await client.write_packet(caseus.clientbound.GeneralMessagePacket, message=line)
 
     async def _broadcast(self, lines):
         for writer in list(self._loaders):

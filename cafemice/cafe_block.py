@@ -90,6 +90,7 @@ def parse_posts(data):
             pos += 12
             author, pos = _utf(data, pos)
             text, pos = _utf(data, pos)
+            (score,) = struct.unpack_from(">h", data, pos + 1)
             pos += 1 + 2
             _extra, pos = _utf(data, pos)
             if pos >= len(data):
@@ -97,7 +98,8 @@ def parse_posts(data):
             marker = data[pos]
             pos += 1
             posts.append({"start": start, "end": pos, "post_id": post_id, "avatar": avatar, "time": posted,
-                          "author": author, "text": text, "marker": marker, "raw": data[start:pos]})
+                          "author": author, "text": text, "marker": marker, "score": score,
+                          "raw": data[start:pos]})
     except struct.error:
         return None
     return topic_id, posts
@@ -110,6 +112,59 @@ def pack_post(post_id, avatar, posted, author, text, marker=0):
     """One post in the layout parse_posts reads (no likes, no extra text)."""
     return (struct.pack(">iii", int(post_id), int(avatar or 0), int(posted or 0)) + _pack_utf(author)
             + _pack_utf(text) + b"\x00" + struct.pack(">h", 0) + _pack_utf("") + bytes([int(marker) & 0xFF]))
+
+
+# The topic id of the "show all messages of <name>" view the proxy answers
+# from its archive. The server never hands out topic ids this high.
+ALL_MESSAGES_TOPIC_ID = 2_000_000_000
+
+
+def retext_post(raw, change, marker=None):
+    """One post's bytes with its text replaced by ``change(text)`` (and its
+    marker byte by ``marker`` when given); score and label are kept."""
+    raw = bytes(raw)
+    _author, pos = _utf(raw, 12)
+    text, end = _utf(raw, pos)
+    tail = raw[end:]
+    if marker is not None:
+        tail = tail[:-1] + bytes([int(marker) & 0xFF])
+    return raw[:pos] + _pack_utf(change(text)) + tail
+
+
+def all_messages_payload(posts, topic_id=ALL_MESSAGES_TOPIC_ID, title=None):
+    """A posts payload of archived ``posts`` (Archive.by_author rows): no
+    moderation buttons, no reply box. Archived bytes are kept as they were,
+    but their marker is cleared so no post renames the view's owner.
+
+    ``title(topic_id)`` names each post's topic: it goes on the post's first line."""
+    out = bytearray(b"\x01" + struct.pack(">i", int(topic_id)) + b"\x00\x00")
+    for p in posts:
+        name = (title(p["topic_id"]) if title and p.get("topic_id") is not None else "") or ""
+
+        def change(text, name=name):
+            return f"[{name}]\r{text}" if name else text
+
+        raw = p.get("raw")
+        if raw:
+            out += retext_post(raw, change, marker=0)
+        else:
+            out += pack_post(p["post_id"], p.get("avatar"), p.get("time"), p["author"], change(p["text"]))
+    return bytes(out)
+
+
+DELETED_MARK = "(silindi) "
+
+
+def with_posts_merged(data, extra):
+    """The posts payload with ``extra`` post bytes put among its own posts in
+    post id order."""
+    data = bytes(data)
+    parsed = parse_posts(data)
+    if parsed is None:
+        return data
+    raws = [p["raw"] for p in parsed[1]] + [bytes(r) for r in extra]
+    raws.sort(key=lambda r: struct.unpack_from(">i", r, 0)[0])
+    return data[:POSTS_HEADER] + b"".join(raws)
 
 
 def with_older_posts(data, older):
@@ -143,6 +198,18 @@ def parse_topics(data):
     except struct.error:
         return None
     return topics
+
+
+def with_mod_flag(data):
+    """List payload with its second bool (the game's Café moderator flag) set;
+    None when it already is.
+
+    With the flag on, the game's like/dislike moves a post's score by 15000
+    on screen instead of 1. Only this client's display changes."""
+    data = bytes(data)
+    if len(data) < 2 or data[1]:
+        return None
+    return data[:1] + b"\x01" + data[2:]
 
 
 def avatar_url(avatar_id):
@@ -403,3 +470,30 @@ class Notes:
 
     def get(self, name):
         return next((v for k, v in self.items.items() if _key(k) == _key(name)), "")
+
+
+SETTINGS_PATH = Path(__file__).resolve().parent / "cafe_settings.json"
+
+
+class CafeSettings:
+    """The Café extras' switches, kept in a JSON file."""
+
+    def __init__(self, path=SETTINGS_PATH):
+        self.path = Path(path)
+        self.show_deleted = True  # deleted posts come back marked "(silindi)"
+        try:
+            raw = json.loads(self.path.read_text(encoding="utf-8"))
+            self.show_deleted = bool(raw.get("show_deleted", True))
+        except (OSError, ValueError, AttributeError):
+            pass
+
+    def save(self):
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps({"show_deleted": self.show_deleted}, indent=1), encoding="utf-8")
+        tmp.replace(self.path)
+
+    def toggle_deleted(self):
+        """Switch showing deleted posts; the new setting."""
+        self.show_deleted = not self.show_deleted
+        self.save()
+        return self.show_deleted

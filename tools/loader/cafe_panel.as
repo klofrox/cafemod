@@ -46,6 +46,9 @@
 
       private var cp_toast_box:Sprite = null;
 
+      // Redraws the deleted-posts button from cp_state (set once the Café is up).
+      public var cp_trash_draw:Function = null;
+
       private static function cp_format(size:int, colour:uint, bold:Boolean = false) : TextFormat
       {
          return new TextFormat("Verdana",size,colour,bold);
@@ -153,6 +156,32 @@
             g.lineTo(c - r * 1.05,c + r * 0.7);
             g.moveTo(c - r * 0.3,c + r * 1.05);
             g.lineTo(c + r * 0.3,c + r * 1.05);
+         }
+         else if(kind == "trash" || kind == "trash_off")
+         {
+            // A bin; struck through (and dim) while deleted posts are hidden.
+            if(kind == "trash_off")
+            {
+               g.lineStyle(2,CP_DIM,1,true,"normal","round","round");
+            }
+            g.moveTo(c - r * 1.1,c - r * 0.7);
+            g.lineTo(c + r * 1.1,c - r * 0.7);
+            g.moveTo(c - r * 0.35,c - r * 0.7);
+            g.lineTo(c - r * 0.35,c - r * 1.05);
+            g.lineTo(c + r * 0.35,c - r * 1.05);
+            g.lineTo(c + r * 0.35,c - r * 0.7);
+            g.moveTo(c - r * 0.8,c - r * 0.5);
+            g.lineTo(c - r * 0.6,c + r * 1.1);
+            g.lineTo(c + r * 0.6,c + r * 1.1);
+            g.lineTo(c + r * 0.8,c - r * 0.5);
+            g.moveTo(c,c - r * 0.2);
+            g.lineTo(c,c + r * 0.8);
+            if(kind == "trash_off")
+            {
+               g.lineStyle(2,0xE0676B,1,true);
+               g.moveTo(c - r * 1.2,c + r * 1.2);
+               g.lineTo(c + r * 1.2,c - r * 1.2);
+            }
          }
          else if(kind == "block")
          {
@@ -298,6 +327,34 @@
          bell.x = b.x - 112;
          find.x = b.x - 140;
          block.y = star.y = shot.y = bell.y = find.y = b.y + (b.height - 22) / 2;
+         // Deleted posts on/off: its icon follows the proxy's state.
+         var bin:Sprite = new Sprite();
+         var hover:Boolean = false;
+         this.cp_trash_draw = function():void
+         {
+            cp_draw_icon(bin.graphics,self.cp_state.showDeleted === false ? "trash_off" : "trash",22,hover ? CP_HOVER : FU_BUTTON);
+         };
+         this.cp_trash_draw();
+         bin.buttonMode = true;
+         bin.useHandCursor = true;
+         bin.addEventListener(MouseEvent.ROLL_OVER,function(e:Event):void
+         {
+            hover = true;
+            self.cp_trash_draw();
+         });
+         bin.addEventListener(MouseEvent.ROLL_OUT,function(e:Event):void
+         {
+            hover = false;
+            self.cp_trash_draw();
+         });
+         bin.addEventListener(MouseEvent.CLICK,function(e:MouseEvent):void
+         {
+            e.stopPropagation();
+            self.cs_send("DELETED");
+         });
+         bin.x = b.x - 168;
+         bin.y = find.y;
+         win.addChild(bin);
          win.addChild(find);
          win.addChild(block);
          win.addChild(star);

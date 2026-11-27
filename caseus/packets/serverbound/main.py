@@ -862,6 +862,14 @@ class RemoveFashionSquadOutfitPacket(ServerboundPacket):
     outfit_id: types.Int
 
 @public
+class CafeShowAllMessagesPacket(ServerboundPacket):
+    """Café moderator menu: "show all messages of <name>"."""
+
+    id = (149, 15)
+
+    name: types.String
+
+@public
 class OpenFashionSquadSalesMenuPacket(ServerboundPacket):
     id = (149, 16)
 
