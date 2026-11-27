@@ -25,6 +25,10 @@ def main():
         "--collect-submodules", "caseus", "--hidden-import", "cafemice.cafe_proxy", "--hidden-import", "cafemice.gui",
         "--exclude-module", "pytest", "--exclude-module", "numpy",
         "--exclude-module", "pydantic", "--exclude-module", "pydantic_core",
+        # Pulled in but never used: caseus' packet sniffer (scapy) and Pillow's
+        # AVIF support; together about 7 MB of the exe.
+        "--exclude-module", "caseus.sniffers", "--exclude-module", "scapy",
+        "--exclude-module", "PIL.AvifImagePlugin", "--exclude-module", "PIL._avif",
         "--distpath", str(ROOT / "dist"), "--workpath", str(ROOT / "build" / "pyinstaller"),
         "--specpath", str(ROOT / "build" / "pyinstaller"),
         str(Path(__file__).resolve().parent / "entry.py"),
