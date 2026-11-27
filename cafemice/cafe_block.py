@@ -153,6 +153,28 @@ def all_messages_payload(posts, topic_id=ALL_MESSAGES_TOPIC_ID, title=None):
 
 
 DELETED_MARK = "(silindi) "
+# A deletion takes a post or a few; a longer run of missing posts is the
+# server shortening a long topic, not a deletion.
+DELETED_RUN = 3
+# At most this many deleted posts come back per topic (each one is drawn).
+DELETED_LIMIT = 50
+
+
+def deleted_rows(archived, sent_ids, run=DELETED_RUN, limit=DELETED_LIMIT):
+    """The ``archived`` rows (a topic's posts from its first one sent on, in
+    post id order) the server left out by deleting them: runs of at most
+    ``run`` missing posts; the newest ``limit`` of them."""
+    out, gap = [], []
+    for row in archived:
+        if row["post_id"] in sent_ids:
+            if len(gap) <= run:
+                out += gap
+            gap = []
+        else:
+            gap.append(row)
+    if len(gap) <= run:
+        out += gap
+    return out[-limit:] if limit else []
 
 
 def with_posts_merged(data, extra):

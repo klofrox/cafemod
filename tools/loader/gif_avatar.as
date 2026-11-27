@@ -231,6 +231,13 @@
 
       private var av_fetched:Object = {};
 
+      // Downloads wait here; a few run at a time so a big topic stays smooth.
+      private static const AV_AT_ONCE:int = 3;
+
+      private var av_queue:Array = [];
+
+      private var av_running:int = 0;
+
       public function av_refresh(line:String) : void
       {
          var parts:Array = line.split(" ");
@@ -265,7 +272,19 @@
                continue;
             }
             this.av_fetched[url] = now;
-            this.av_fetch(url,bmd);
+            this.av_queue.push([url,bmd]);
+         }
+         this.av_pump();
+      }
+
+      private function av_pump() : void
+      {
+         var next:Array = null;
+         while(this.av_running < AV_AT_ONCE && this.av_queue.length > 0)
+         {
+            next = this.av_queue.shift();
+            this.av_running++;
+            this.av_fetch(next[0],next[1]);
          }
       }
 
@@ -286,9 +305,20 @@
             {
                self.cs_log("avatar " + url + ": " + err.message);
             }
+            self.av_running--;
+            self.av_pump();
          });
          l.contentLoaderInfo.addEventListener(IOErrorEvent.IO_ERROR,function(e:Event):void
          {
+            self.av_running--;
+            self.av_pump();
          });
-         l.load(new URLRequest(url + "?d=" + new Date().time),new flash.system.LoaderContext(true));
+         try
+         {
+            l.load(new URLRequest(url + "?d=" + new Date().time),new flash.system.LoaderContext(true));
+         }
+         catch(loadErr:Error)
+         {
+            this.av_running--;
+         }
       }
