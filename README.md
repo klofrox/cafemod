@@ -80,8 +80,6 @@ python tools/exe/build.py               # -> dist/CafeMice.exe
 
 Exe'siz çalıştırmak için: `python -m cafemice` (aynı launcher).
 
-Testler: `python -m pytest tests`
-
 ## Lisanslar
 
 - `caseus/`: friedkeenan, `caseus/LICENSE`.
