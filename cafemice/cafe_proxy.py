@@ -53,7 +53,6 @@ from .cafe_archive import Archive, mentions
 from .cafe_block import (
     ALL_MESSAGES_TOPIC_ID,
     DELETED_MARK,
-    deleted_rows,
     Blocklist,
     CafeSettings,
     Favorites,
@@ -303,14 +302,16 @@ class CafeProxy(Proxy):
     def _deleted_posts(self, parsed):
         """Archived posts of the topic the server sent before but no longer
         does (deleted), as post bytes marked "(silindi)". Posts older than the
-        first one sent are left to _older_posts, and long runs of missing posts
-        are the server shortening the topic: neither is marked (deleted_rows)."""
+        first one sent are left to _older_posts: the server cuts long topics
+        at the start, so a post missing after it was deleted."""
         if parsed is None or not parsed[1] or not self.settings.show_deleted:
             return []
         topic_id, posts = parsed
         sent = {p["post_id"] for p in posts}
         out = []
-        for p in deleted_rows(self.archive.posts_from(topic_id, min(sent)), sent):
+        for p in self.archive.posts_from(topic_id, min(sent)):
+            if p["post_id"] in sent:
+                continue
             raw = p["raw"] or pack_post(p["post_id"], p["avatar"], p["time"], p["author"], p["text"])
             out.append(retext_post(raw, lambda text: DELETED_MARK + text, marker=0))
         return out

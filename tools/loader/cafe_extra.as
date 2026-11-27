@@ -20,6 +20,15 @@
 
       private var cx_frames:int = 0;
 
+      // A big topic arrives as hundreds of posts at once: restyle at most
+      // this many per frame (newest first, they are the ones on screen) and
+      // come back the next frame for the rest, so the Café never stalls.
+      private static const CX_PER_FRAME:int = 20;
+
+      private var cx_left:int = 0;
+
+      private var cx_more:Boolean = false;
+
       private var cx_whitened:int = 0;
 
       private var cx_chime:Vector.<Number> = null;
@@ -57,12 +66,14 @@
       private function cx_tick(e:Event) : void
       {
          var win:DisplayObjectContainer = this.cp_cafe;
-         if(++this.cx_frames % 10 != 0 || win == null || win.stage == null)
+         if(++this.cx_frames % 10 != 0 && !this.cx_more || win == null || win.stage == null)
          {
             return;
          }
          try
          {
+            this.cx_left = CX_PER_FRAME;
+            this.cx_more = false;
             this.cx_whiten(win,0);
             if(this.cx_goto_post != 0)
             {
@@ -85,8 +96,12 @@
          var tf:TextField = null;
          var h:String = null;
          var entry:Object = null;
-         for(i = 0; i < c.numChildren; i++)
+         for(i = c.numChildren - 1; i >= 0; i--)
          {
+            if(this.cx_more)
+            {
+               return;
+            }
             d = c.getChildAt(i);
             tf = d as TextField;
             if(tf != null)
@@ -108,6 +123,11 @@
                else if(!CX_NAME_COLOUR.test(h))
                {
                   continue;
+               }
+               if(this.cx_left-- <= 0)
+               {
+                  this.cx_more = true;
+                  return;
                }
                this.cx_render(tf,h);
                if(this.cx_whitened++ == 0)
