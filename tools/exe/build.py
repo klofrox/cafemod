@@ -2,7 +2,7 @@
 
     python tools/exe/build.py     # -> dist/CafeMice.exe
 
-Needs PyInstaller (a venv with --system-site-packages is enough) and the
+Needs PyInstaller and pystray (a venv with --system-site-packages is enough) and the
 loader built first: python tools/loader/build.py
 Nothing of this computer's Café data goes in: only code and the loader SWF.
 """
@@ -23,6 +23,7 @@ def main():
         "--paths", str(ROOT), "--add-data", f"{LOADER};.",
         "--icon", str(HERE / "cafemice.ico"), "--add-data", f"{HERE / 'cafemice.ico'};.", "--add-data", f"{ROOT / 'cafemice' / 'fonts'};fonts", "--version-file", str(HERE / "version.txt"),
         "--collect-submodules", "caseus", "--hidden-import", "cafemice.cafe_proxy", "--hidden-import", "cafemice.gui",
+        "--hidden-import", "pystray._win32",  # the tray icon (loaded by name at run time)
         "--exclude-module", "pytest", "--exclude-module", "numpy",
         "--exclude-module", "pydantic", "--exclude-module", "pydantic_core",
         # Pulled in but never used: caseus' packet sniffer (scapy) and Pillow's

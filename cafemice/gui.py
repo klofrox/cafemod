@@ -1,10 +1,12 @@
 """CafeMice's window: install / remove the mod and start the game, no typing.
 
 Patcher holds the logic (tested); CafeMiceWindow only draws it with tkinter.
-Closing the window stops CafeMice (the game then needs the mod removed or
-CafeMice started again).
+Minimising or closing the window puts it in the tray (next to the clock):
+CafeMice keeps running; the tray icon's menu opens it, removes the mod or
+stops CafeMice (the game then needs the mod removed or CafeMice started again).
 """
 
+import queue
 import sys
 import threading
 from pathlib import Path
@@ -85,6 +87,13 @@ def _fonts_dir():
     return Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "fonts"
 
 
+def _icon_path():
+    """The exe carries the icon next to its files; from source it is in tools/exe."""
+    if hasattr(sys, "_MEIPASS"):
+        return Path(sys._MEIPASS) / "cafemice.ico"
+    return Path(__file__).resolve().parent.parent / "tools" / "exe" / "cafemice.ico"
+
+
 def _load_fonts():
     """Make the bundled Outfit files usable by Tk, for this process only."""
     try:
@@ -106,7 +115,7 @@ class CafeMiceWindow:
         root.title("CafeMice")
         root.configure(bg=BG)
         root.resizable(False, False)
-        icon = Path(getattr(sys, "_MEIPASS", Path(__file__).resolve().parent)) / "cafemice.ico"
+        icon = _icon_path()
         if icon.is_file():
             try:
                 root.iconbitmap(str(icon))
@@ -135,9 +144,71 @@ class CafeMiceWindow:
                                 justify="left", anchor="w")
         self.message.pack(fill="x", pady=(14, 0))
 
-        root.protocol("WM_DELETE_WINDOW", self.on_close)
+        # Tray menu clicks come from the tray's own thread: Tk runs them here.
+        self.calls = queue.Queue()
+        self.tray = self._make_tray()
+        root.protocol("WM_DELETE_WINDOW", self.on_x)
+        root.bind("<Unmap>", self._on_unmap)
         self.refresh()
         root.after(500, self.tick)
+        root.after(100, self._run_calls)
+
+    # --- tray --------------------------------------------------------------------
+
+    def _make_tray(self):
+        """The tray icon, or None when pystray is not there (the window then
+        behaves as before: minimise to the taskbar, close stops CafeMice)."""
+        try:
+            import pystray
+            from PIL import Image
+            image = Image.open(_icon_path())
+        except Exception:
+            return None
+        later = self.calls.put
+        menu = pystray.Menu(
+            pystray.MenuItem("Aç", lambda: later(self.show), default=True),
+            pystray.MenuItem("Modu kaldır", lambda: later(self.on_remove),
+                             enabled=lambda item: self.p.status() == "installed"),
+            pystray.Menu.SEPARATOR,
+            pystray.MenuItem("Kapat", lambda: later(self.on_close)),
+        )
+        icon = pystray.Icon("CafeMice", image, "CafeMice", menu)
+        try:
+            icon.run_detached()
+        except Exception:
+            return None
+        return icon
+
+    def _run_calls(self):
+        while True:
+            try:
+                call = self.calls.get_nowait()
+            except queue.Empty:
+                break
+            call()
+        if self.root.winfo_exists():
+            self.root.after(100, self._run_calls)
+
+    def _on_unmap(self, event):
+        # Minimised: off the taskbar, into the tray.
+        if self.tray and event.widget is self.root and self.root.state() == "iconic":
+            self.root.after(0, self.to_tray)
+
+    def on_x(self):
+        """The window's X: to the tray while CafeMice runs, else close."""
+        if self.tray and self.p.running:
+            self.to_tray()
+        else:
+            self.on_close()
+
+    def to_tray(self):
+        self.root.withdraw()
+
+    def show(self):
+        self.root.deiconify()
+        self.root.state("normal")
+        self.root.lift()
+        self.root.focus_force()
 
     def _button(self, parent, text, bg, hover, fg, command, border=False):
         tk = self.tk
@@ -177,7 +248,8 @@ class CafeMiceWindow:
         if self.p.play() == "no_game":
             self.say("Önce Transformice'i Steam'den kur.", BAD)
         else:
-            self.say("Oyun açılıyor. Oynarken bu pencere açık kalsın, alta küçültebilirsin.")
+            self.say("Oyun açılıyor. Oynarken CafeMice açık kalsın: küçültünce saatin yanındaki "
+                     "simgeye iner, sağ tıkla kapatırsın.")
         self.refresh()
 
     def on_remove(self):
@@ -192,6 +264,8 @@ class CafeMiceWindow:
                                                    "Kapatılsın mı? (Oyunu normal oynamak için önce "
                                                    "\"Modu kaldır\"a bas.)"):
                 return
+        if self.tray:
+            self.tray.stop()
         self.root.destroy()
 
     def tick(self):
@@ -202,6 +276,8 @@ class CafeMiceWindow:
             self.say(f"Hata: {self.p.error}", BAD)
             self.p.error = "shown"
         self.refresh()
+        if self.tray:
+            self.tray.update_menu()
         self.root.after(500, self.tick)
 
     def run(self):
